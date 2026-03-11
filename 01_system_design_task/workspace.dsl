@@ -22,15 +22,11 @@ workspace {
         
         email_service = softwareSystem "E-mail Service" {
             description "Внешний сервис отправки писем для подтверждения регистрации и сброса пароля"
-            tags "C1"    
+            tags "C1, Pipe"    
 
                 -> user "Отправка писем" "HTTPS/REST API"{
                     tags "C1"
-                }
-                -> guest "Отправка писем" "HTTPS/REST API"{
-                    tags "C1"
-                } 
-                
+                }                
         }
 
         recipe_system = softwareSystem "Recipe Management System" {
@@ -50,17 +46,19 @@ workspace {
             web_app = container "Web Application" {
                 description "Веб-приложение для взаимодействия пользователей с системой"
                 technology "React"
-                tags "C2"
+                tags "C2, Web"
             }
 
             backend = container "Backend API" {
-                technology "FastAPI"
+                description "Бизнес-логика пользователей, рецептов, избранного и аутентификации"
+                technology "Python, FastAPI"
                 tags "C2"
 
-                -> database "Запрос/изменение данных" "JDBC/SQL"
-                -> email_service "Отправка письем" "HTTPS/REST API"
+                -> database "Запрос/изменение данных" "SQLAlchemy ORM / PostgreSQL"
+                -> email_service "Отправка писем" "HTTPS/REST API"
 
                 email_notification = component "Email Notification Service" {
+                    description "Подготавливает и инициирует отправку email-уведомлений"
                     technology "Python"
                     tags "C3"
 
@@ -68,68 +66,94 @@ workspace {
                 }
 
                 recipe_repo = component "Recipe Repository" {
-                    technology "Python, SQLAlchemy"
+                    description "Обеспечивает доступ к данным рецептов и ингредиентов"
+                    technology "Python, SQLAlchemy ORM"
                     tags "C3"
 
-                    -> database "Запрос/изменение данных" "Python, SQLAlchemy"
+                    -> database "Запрос/изменение данных" "SQLAlchemy ORM / PostgreSQL" {
+                        tags "C3"
+                    }
                 }
 
                 user_repo = component "User Repository" {
-                    technology "Python, SQLAlchemy"
+                    description "Обеспечивает доступ к данным пользователей"
+                    technology "Python, SQLAlchemy ORM"
                     tags "C3"
 
-                    -> database "Запрос/изменение данных" "Python, SQLAlchemy"
+                    -> database "Запрос/изменение данных" "SQLAlchemy ORM / PostgreSQL" {
+                        tags "C3"
+                    }
                 }
 
                 auth_service = component "Authentication Service" {
+                    description "Аутентификация, регистрация и сценарии сброса пароля"
                     technology "Python"
                     tags "C3"
 
-                    -> user_repo "Запрос данных о пользователе" "SQL TCP:5432"
-                    -> email_notification "Отправка письма при регистрации" "REST HTTPS:443"
+                    -> user_repo "Чтение и создание учётных записей" "Python"  {
+                        tags "C3"
+                    }
+                    -> email_notification "Запрос отправки писем" "Python" {
+                        tags "C3"
+                    }
                 }
 
                 user_service = component "User Service" {
+                    description "Поиск пользователей, изменение данных профиля и управление избранным"
                     technology "Python"
                     tags "C3"
-                    -> user_repo "Запрос/изменение данных о пользователе" "SQL TCP:5432"
+                    -> user_repo "Запрос/изменение данных о пользователе" "Python" {
+                        tags "C3"
+                    }
                 }
 
                 recipe_service = component "Recipe Service" {
+                    description "Поиск рецептов, создание и изменение рецептов, ингредиентов"
                     technology "Python"
                     tags "C3"
 
-                    -> recipe_repo "Запрос/изменение данных о рецептах" "SQL TCP:5432"
+                    -> recipe_repo "Запрос/изменение данных о рецептах" "Python" {
+                        tags "C3"
+                    }
                 }
 
-                auth_conroller = component "Authentication Controller" {
+                auth_controller = component "Authentication Controller" {
+                    description "Обрабатывает запросы на регистрацию, вход и сброс пароля"
                     technology "Python, FastAPI Router, Pydantic"
-                    tags "C3"
+                    tags "C3, Controller"
 
-                    -> auth_service "Аутентификация пользователя" "REST HTTPS:443"
+                    -> auth_service "Аутентификация пользователя" "Python" {
+                        tags "C3"
+                    }
                 }
 
                 recipe_controller = component "Recipe Controller" {
+                    description "Обрабатывает запросы на получение и изменение данных о рецептах"
                     technology "Python, FastAPI Router, Pydantic"
-                    tags "C3"
+                    tags "C3, Controller"
 
-                    -> recipe_service "Получение/изменение данных о рецептах" "REST HTTPS:443"
+                    -> recipe_service "Получение/изменение данных о рецептах" "Python" {
+                        tags "C3"
+                    }
                 }
 
                 user_controller = component "User Controller" {
+                    description "Обрабатывает запросы на получение и изменение данных о пользователях"
                     technology "Python, FastAPI Router, Pydantic"
-                    tags "C3"
+                    tags "C3, Controller"
 
-                    -> user_service "Получение/изменение данных о пользователе" "REST HTTPS:443"
+                    -> user_service "Получение/изменение данных о пользователе" "Python" {
+                        tags "C3"
+                    }
                 }
 
-                web_app -> auth_conroller "Аутентификация" "REST HTTPS:443"
-                web_app -> recipe_controller "Получение/изменение данных о рецептах" "REST HTTPS:443"
-                web_app -> user_controller "Получение/изменение данных о пользователе"
+                web_app -> auth_controller "Аутентификация/регистрация" "HTTPS/REST, JSON"
+                web_app -> recipe_controller "Получение/изменение данных о рецептах" "HTTPS/REST, JSON"
+                web_app -> user_controller "Получение/изменение данных о пользователе" "HTTPS/REST, JSON"
 
             }
 
-            web_app -> backend "Вызывает API" "HTTPS/REST" {
+            web_app -> backend "Вызывает API" "HTTPS/REST, JSON" {
                 tags "C2"
             }
             guest -> web_app "Регистрация, поиск и просмотр рецептов" "HTTPS/REST API" {
@@ -161,17 +185,37 @@ workspace {
         themes default
 
         styles {
-            // element "Software System" {
-            //     background "#1168bd"
-            //     color "#ffffff"
-            // }
-            // element "Person" {
-            //     background "#01070E"
-            //     color "#ffffff"
-            //     shape person
+            // element <tag> {
+            //     shape <Box|RoundedBox|Circle|Ellipse|Hexagon|Diamond|Cylinder|Bucket|Pipe|Person|Robot|Folder|WebBrowser|Window|Terminal|Shell|MobileDevicePortrait|MobileDeviceLandscape|Component>
+            //     icon <file|url>
+            //     width <integer>
+            //     height <integer>
+            //     background <#rrggbb|color name>
+            //     color <#rrggbb|color name>
+            //     colour <#rrggbb|color name>
+            //     stroke <#rrggbb|color name>
+            //     strokeWidth <integer: 1-10>
+            //     fontSize <integer>
+            //     border <solid|dashed|dotted>
+            //     opacity <integer: 0-100>
+            //     metadata <true|false>
+            //     description <true|false>
+            //     properties {
+            //         name value
+            //     }
             // }
             element "db" {
                 shape Cylinder
+                icon "src\postgresql.svg"
+            }
+            element "Web" {
+                shape WebBrowser
+            }
+            element "Pipe" {
+                shape Pipe
+            }
+            element "Controller" {
+                shape Component
             }
         }
 
@@ -184,11 +228,30 @@ workspace {
 
         container recipe_system {
             include *
+            // exclude "relationship.tag==C1"
+            exclude "relationship.tag==C3"
             autoLayout 
         }
         
         component recipe_system.backend {
             include *
             autoLayout
+        }
+
+        dynamic recipe_system.backend "01" "Сценарий регистрации пользователя" {
+            guest -> recipe_system.web_app "Отправка формы регистрации"
+            recipe_system.web_app -> recipe_system.backend.auth_controller "POST /auth/register с данными пользователя"
+            recipe_system.backend.auth_controller -> recipe_system.backend.auth_service "Передача запроса на регистрацию"
+            recipe_system.backend.auth_service -> recipe_system.backend.user_repo "Проверка уникальности login/email"
+            recipe_system.backend.user_repo -> recipe_system.database "Чтение данных пользователя"
+            recipe_system.backend.auth_service -> recipe_system.backend.user_repo "Создаёт новую учётную запись"
+            recipe_system.backend.user_repo -> recipe_system.database "Сохраняет нового пользователя"
+            recipe_system.backend.auth_service -> recipe_system.backend.email_notification "Запрашивает отправку письма подтверждения"
+            recipe_system.backend.email_notification -> email_service "Отправляет письмо подтверждения"
+            email_service -> user "Доставляет письмо подтверждения регистрации"
+            recipe_system.backend.auth_controller -> recipe_system.web_app "Возвращает результат успешной регистрации"
+            
+            autoLayout
+        }
     }
 }
