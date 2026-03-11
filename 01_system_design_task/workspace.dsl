@@ -1,6 +1,6 @@
 workspace {
-    name "имя продукта"
-    description "описание продукта"
+    name "Система управления рецептами"
+    description "Веб-сервис для создания, хранения и публикации рецептов"
 
     # включаем режим с иерархической системой идентификаторов
     !identifiers hierarchical
@@ -9,118 +9,143 @@ workspace {
         properties { 
             structurizr.groupSeparator "/"
             workspace_cmdb "cmdb_mnemonic"
-            architect "имя архитектора"
+            architect "Щепкин А.И."
         }
 
-        my_user    = person "B2C пользователь"
-        my_admin   = person "Администратор системы"
-        my_support = person "Специалист ТП"
+        guest = person "Гость" {
+            tags "Person, C1"
+        }
 
-        my_system = softwareSystem "system name"{
-            topic1 = container "Topic name"{
-                technology "Kafka"
-                tags "kafka"
+        user = person "Авторизованный пользователь" {
+            tags "Person, C1"
+        }
+        
+        email_service = softwareSystem "E-mail Service" {
+            description "Внешний сервис отправки писем для подтверждения регистрации и сброса пароля"
+            tags "C1"    
+
+                -> user "Отправка писем" "HTTPS/REST API"{
+                    tags "C1"
+                }
+                -> guest "Отправка писем" "HTTPS/REST API"{
+                    tags "C1"
+                } 
+                
+        }
+
+        recipe_system = softwareSystem "Recipe Management System" {
+            description "Система для поиска, создания и хранения рецептов"
+            tags "C1"
+
+            -> email_service "Отправка писем" "HTTPS/REST API" {
+                tags "C1"
             }
 
-            scheme1 = container "Scheme name"{
-                technology "PostgreSQL 14"
-                tags "postgre"
+            database = container "Database" {
+                description "База данных пользователей, рецептов, ингредиентов и избранного"
+                technology "PostgreSQL 17"
+                tags "C2, db"
             }
 
-            mongo1 = container "Mongo server"{
-                technology "MongoDB"
-                tags "mongo"
-            }
-
-            s3_storage = container "S3 Storage" {
-                technology "ceph"
-                tags "s3"
-            }
-
-            cache1 = container "Cache server" {
-                technology "Redis"
-                tags "redis"
-            }
-
-            srv1 = container "Service 1" {
-                technology "Spring"
-                tags "java"
-                -> topic1 "Публикация событий" "KAFKA TCP:9092"
-                -> scheme1 "Запрос/изменение данных" "SQL TCP:5432"
-            }
-
-            srv2 = container "Service 2" {
-                technology "Golang"
-                tags "go"
-                -> s3_storage "Запрос/сохранение файлов" "S3 HTTPS:443"
-                -> mongo1 "Запрос/сохранение документов"
-            }
-
-            gw = container "API Gateway" {
-                technology "Spring Cloud Gateway"
-                tags "java"
-                -> srv1 "Описание запроса" "REST HTTPS:443"
-                -> srv2 "Описание запроса" "REST HTTPS:443"
-                -> cache1 "Запрс кеша сессий" "REST HTTPS:443"
-            }
-
-            bff = container "BFF Web" {
-                technology "Spring"
-                tags "java"
-                -> gw "Описание запроса" "REST HTTPS:443"
-            }
-
-            fe = container "Frontend" {
+            web_app = container "Web Application" {
+                description "Веб-приложение для взаимодействия пользователей с системой"
                 technology "React"
-                tags "js"
-                -> bff "Описание запроса" "REST HTTPS:443"
+                tags "C2"
+            }
+
+            backend = container "Backend API" {
+                technology "FastAPI"
+                tags "C2"
+
+                -> database "Запрос/изменение данных" "JDBC/SQL"
+                -> email_service "Отправка письем" "HTTPS/REST API"
+
+                email_notification = component "Email Notification Service" {
+                    technology "Python"
+                    tags "C3"
+
+                    -> email_service "Отправка письма" "HTTPS/REST API"
+                }
+
+                recipe_repo = component "Recipe Repository" {
+                    technology "Python, SQLAlchemy"
+                    tags "C3"
+
+                    -> database "Запрос/изменение данных" "Python, SQLAlchemy"
+                }
+
+                user_repo = component "User Repository" {
+                    technology "Python, SQLAlchemy"
+                    tags "C3"
+
+                    -> database "Запрос/изменение данных" "Python, SQLAlchemy"
+                }
+
+                auth_service = component "Authentication Service" {
+                    technology "Python"
+                    tags "C3"
+
+                    -> user_repo "Запрос данных о пользователе" "SQL TCP:5432"
+                    -> email_notification "Отправка письма при регистрации" "REST HTTPS:443"
+                }
+
+                user_service = component "User Service" {
+                    technology "Python"
+                    tags "C3"
+                    -> user_repo "Запрос/изменение данных о пользователе" "SQL TCP:5432"
+                }
+
+                recipe_service = component "Recipe Service" {
+                    technology "Python"
+                    tags "C3"
+
+                    -> recipe_repo "Запрос/изменение данных о рецептах" "SQL TCP:5432"
+                }
+
+                auth_conroller = component "Authentication Controller" {
+                    technology "Python, FastAPI Router, Pydantic"
+                    tags "C3"
+
+                    -> auth_service "Аутентификация пользователя" "REST HTTPS:443"
+                }
+
+                recipe_controller = component "Recipe Controller" {
+                    technology "Python, FastAPI Router, Pydantic"
+                    tags "C3"
+
+                    -> recipe_service "Получение/изменение данных о рецептах" "REST HTTPS:443"
+                }
+
+                user_controller = component "User Controller" {
+                    technology "Python, FastAPI Router, Pydantic"
+                    tags "C3"
+
+                    -> user_service "Получение/изменение данных о пользователе" "REST HTTPS:443"
+                }
+
+                web_app -> auth_conroller "Аутентификация" "REST HTTPS:443"
+                web_app -> recipe_controller "Получение/изменение данных о рецептах" "REST HTTPS:443"
+                web_app -> user_controller "Получение/изменение данных о пользователе"
+
+            }
+
+            web_app -> backend "Вызывает API" "HTTPS/REST" {
+                tags "C2"
+            }
+            guest -> web_app "Регистрация, поиск и просмотр рецептов" "HTTPS/REST API" {
+                tags "C2"
+            }
+            user -> web_app "Аутентификация, создание/поиск рецептов" "HTTPS/REST API" {
+                tags "C2"
             }
         }
 
-        deploymentEnvironment "PROD" {
-                # если необходима DMZ
-                deploymentNode "Demilitarized Zone" {
-                    deploymentNode "kubernates.namespace.dmz" {
-                        deploymentNode "pod_name_1" {
-                            containerInstance my_system.fe
-                            instances 2
-                        }
-                    }
-                }
-                deploymentNode "Protected Zone" {
-                    deploymentNode "kubernates.namespace.protected" {
-                        deploymentNode "pod_name_2" {
-                            containerInstance my_system.bff
-                            instances 2
-                        }
-                        deploymentNode "pod_name_3" {
-                            containerInstance my_system.gw
-                            instances 2
-                        }
-                        deploymentNode "pod_name_4" {
-                            containerInstance my_system.srv1
-                        }
-                        deploymentNode "pod_name_5" {
-                            containerInstance my_system.srv2
-                        }
-                        deploymentNode "pod_name_6" {
-                            containerInstance my_system.topic1
-                        }
-                        deploymentNode "pod_name_7" {
-                            containerInstance my_system.scheme1
-                        }
-                        deploymentNode "pod_name_8" {
-                            containerInstance my_system.mongo1
-                        }
-                        deploymentNode "pod_name_9" {
-                            containerInstance my_system.s3_storage
-                        }
-                        deploymentNode "pod_name_10" {
-                            containerInstance my_system.cache1
-                        }
-                       }
-                    }
-                }
+        user -> recipe_system "Получение услуг" {
+            tags "C1"
+        }
+        guest -> recipe_system "Получение услуг" {
+            tags "C1"
+        }
     }
 
     views {
@@ -135,22 +160,35 @@ workspace {
         # Задаем стили для отображения
         themes default
 
+        styles {
+            // element "Software System" {
+            //     background "#1168bd"
+            //     color "#ffffff"
+            // }
+            // element "Person" {
+            //     background "#01070E"
+            //     color "#ffffff"
+            //     shape person
+            // }
+            element "db" {
+                shape Cylinder
+            }
+        }
 
         # Диаграмма контекста
-        systemContext my_system {
+        systemContext recipe_system {
             include *
+            exclude "relationship.tag==C2"
             autoLayout
         }
 
-        container my_system {
+        container recipe_system {
             include *
             autoLayout 
         }
-
-        deployment * "PROD" {
+        
+        component recipe_system.backend {
             include *
-            autoLayout 
-        }
-
+            autoLayout
     }
 }
